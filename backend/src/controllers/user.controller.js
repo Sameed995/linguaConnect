@@ -1,18 +1,18 @@
-import User from "../models/user.js";
+import User from "../models/User.js";
 import FriendRequest from "../models/FriendRequest.js";
 
 
 export async function getRecommendedUsers(req, res) {
     try {
-        const currentUser = req.user.id;
+        const currentUserId = req.user.id;
         const currentUser = req.user;
 
         const recommendedUsers = await User.find({
             $and: [
-            { _id: { $ne: currentUser._id } }, 
+            { _id: { $ne: currentUserId} }, 
             { _id: { $nin: currentUser.friends } },
-            {isOnboarded: true}
-            ]
+            {isOnboarded: true},
+            ],
         })
         res.status(200).json(recommendedUsers);
         
@@ -131,7 +131,7 @@ export async function getFriendRequests(req, res) {
             status: "accepted",
         }).populate("recipient", "fullName profilePic");
 
-        res.status(200).json({incomingRequests, acceptedRequests});
+        res.status(200).json({incomingRequests, acceptedReqs});
 
     }catch(error){
         console.error("Error fetching friend requests:", error.message);
