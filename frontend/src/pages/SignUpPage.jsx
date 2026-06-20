@@ -3,8 +3,8 @@ import {useState} from 'react';
 import {MessageCircleMore} from "lucide-react";
 import { Link } from 'react-router';
 import { useMutation } from '@tanstack/react-query';
-import {axiosInstance} from '../lib/axios.js';
 import { useQueryClient } from '@tanstack/react-query';
+import { signup } from '../lib/api';
 
 const SignUpPage = () => {
   const [signupData, setSignupData] = useState({
@@ -15,11 +15,8 @@ const SignUpPage = () => {
 
   const queryClient = useQueryClient();
 
-  const {mutate, isPending, error} = useMutation({
-    mutationFn: async () => {
-      const response = await axiosInstance.post('/auth/signup',signupData); 
-      return response.data;
-    },
+  const {mutate:signupMutation, isPending, error} = useMutation({
+    mutationFn: signup,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['authUser'] });
     }
@@ -27,9 +24,10 @@ const SignUpPage = () => {
 
   const handleSignup = (e) => {
     e.preventDefault();
-    mutate();
+    signupMutation(signupData);
     // console.log(signupData);
   }
+  console.log("ERROR OBJECT:", error);
   return (
     <div className="h-screen flex items-center justify-center p-4 sm:p-6 md:p-8" data-theme="light">
        <div className="border border-primary/25 flex flex-col lg:flex-row w-full max-w-2xl mx-auto bg-base-100 rounded-xl shadow-lg overflow-hidden">
@@ -42,6 +40,16 @@ const SignUpPage = () => {
               Learn New Languages
             </span>
           </div>
+
+          {/* error msg */}
+
+          {error && (
+            <div className="alert alert-error shadow-lg mb-4">
+              <span>
+                {error.response?.data?.message || "An error occurred during signup."}
+              </span>
+            </div>
+          )}
           <div className="w-full">
             <form onSubmit={handleSignup} className="w-full flex flex-col gap-4">
               <div className ="space-y-4">
