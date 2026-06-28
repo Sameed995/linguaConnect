@@ -30,7 +30,6 @@ LinguaConnect is a scalable real-time communication platform that lets users fin
 - **Text chat** with typing indicators, reactions, threads, and image uploads
 - **Video calls** with screen sharing, recording, and live reactions
 - A **friend system** and onboarding flow to personalize the experience
-- **32 customizable UI themes** for a tailored interface
 
 The app is built using the **MERN** stack (MongoDB, Express, React, Node.js) and integrates **Stream's Chat & Video SDKs** to handle real-time messaging and video infrastructure at scale.
 
