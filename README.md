@@ -79,7 +79,6 @@ The app is built using the **MERN** stack (MongoDB, Express, React, Node.js) and
 - Personalized onboarding flow
 - Friend request system (send, accept, manage)
 - Notifications for friend activity
-- 32 customizable UI themes
 
 ### Safety & Reliability
 - Protected API routes via auth middleware
