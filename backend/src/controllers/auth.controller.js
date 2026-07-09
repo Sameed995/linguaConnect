@@ -1,6 +1,28 @@
 import { upsertStreamUser } from "../lib/stream.js";
 import User from "../models/User.js";
 import jwt from "jsonwebtoken";
+import { generateOtp, sendOtpEmail } from "../utils/otp.js";
+
+function setAuthCookie(res, userId) {
+    const token = jwt.sign({ userId }, process.env.JWT_SECRET_KEY, { expiresIn: "7d" });
+
+    res.cookie("jwt", token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "strict",
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+}
+
+function sanitizeUser(user) {
+    const safeUser = user.toObject ? user.toObject() : { ...user };
+
+    delete safeUser.password;
+    delete safeUser.otpCode;
+    delete safeUser.otpExpiresAt;
+
+    return safeUser;
+}
 
 
 
@@ -20,41 +42,45 @@ export async function signup(req, res) {
         }
 
         const existingUser = await User.findOne({ email });
-        if(existingUser){
+        if (existingUser) {
             return res.status(400).json({ message: "Email already in use" });
         }
 
         const index = Math.floor(Math.random() * 100) + 1;
         const randomAvatar = `https://avatar.iran.liara.run/public/${index}.png`;
+        const otp = generateOtp();
+        const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
         const newUser = await User.create({
             fullName,
             email,
             password,
-            profilePic: randomAvatar
+            profilePic: randomAvatar,
+            isEmailVerified: false,
+            otpCode: otp,
+            otpExpiresAt,
         });
 
-       try{
-         await upsertStreamUser({
-            id: newUser._id.toString(),
-            name: newUser.fullName,
-            image: newUser.profilePic || "",
+        try {
+            await sendOtpEmail({
+                email: newUser.email,
+                otp,
+                fullName: newUser.fullName,
+            });
+        } catch (mailError) {
+            await User.findByIdAndDelete(newUser._id);
+            console.error("Error sending verification OTP:", mailError.message);
+            return res.status(500).json({
+                message: "Unable to send verification code. Please try again.",
+            });
+        }
+
+        res.status(201).json({
+            success: true,
+            verificationRequired: true,
+            email: newUser.email,
+            message: "Account created. Check your email for the verification code.",
         });
-        console.log(`Stream user created successfully for ${newUser.fullName}`);
-       } catch (error) {
-        console.error('Error creating Stream user:', error);
-       }
-
-        const token = jwt.sign({userId: newUser._id}, process.env.JWT_SECRET_KEY, { expiresIn: "7d" });
-
-         res.cookie("jwt", token, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === "production",
-            sameSite: "strict",
-            maxAge: 7 * 24 * 60 * 60 * 1000
-         })
-
-         res.status(200).json({success: true, message: "User created successfully", user: newUser });
 
     }   
     catch (error) {
@@ -80,16 +106,17 @@ export async function login(req, res) {
             return res.status(401).json({ message: "Invalid email or password" });
         }
 
-        const token = jwt.sign({userId: user._id}, process.env.JWT_SECRET_KEY, { expiresIn: "7d"});
+        if (!user.isEmailVerified) {
+            return res.status(403).json({
+                message: "Please verify your email before logging in.",
+                verificationRequired: true,
+                email: user.email,
+            });
+        }
 
-         res.cookie("jwt", token, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === "production",
-            sameSite: "strict",
-            maxAge: 7 * 24 * 60 * 60 * 1000
-         })
+        setAuthCookie(res, user._id);
 
-         res.status(200).json({success: true, user});
+         res.status(200).json({success: true, user: sanitizeUser(user)});
     }
     catch (error) {
         console.error("Error during login:", error.message);
@@ -102,6 +129,112 @@ export function logout(req, res) {
     res.clearCookie("jwt");
     res.status(200).json({ message: "Logged out successfully" });
 } 
+
+export async function verifyOtp(req, res) {
+    try {
+        const { email, otp } = req.body;
+
+        if (!email || !otp) {
+            return res.status(400).json({ message: "Email and OTP are required" });
+        }
+
+        const user = await User.findOne({ email });
+
+        if (!user) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        if (user.isEmailVerified) {
+            setAuthCookie(res, user._id);
+            return res.status(200).json({
+                success: true,
+                message: "Email already verified",
+                user: sanitizeUser(user),
+            });
+        }
+
+        if (!user.otpCode || !user.otpExpiresAt) {
+            return res.status(400).json({ message: "Verification code expired. Please resend it." });
+        }
+
+        if (user.otpExpiresAt.getTime() < Date.now()) {
+            user.otpCode = null;
+            user.otpExpiresAt = null;
+            await user.save();
+
+            return res.status(400).json({ message: "Verification code expired. Please resend it." });
+        }
+
+        if (user.otpCode !== otp) {
+            return res.status(400).json({ message: "Invalid verification code" });
+        }
+
+        user.isEmailVerified = true;
+        user.otpCode = null;
+        user.otpExpiresAt = null;
+        await user.save();
+
+        try {
+            await upsertStreamUser({
+                id: user._id.toString(),
+                name: user.fullName,
+                image: user.profilePic || "",
+            });
+        } catch (streamError) {
+            console.error("Error creating Stream user:", streamError.message);
+        }
+
+        setAuthCookie(res, user._id);
+
+        return res.status(200).json({
+            success: true,
+            message: "Email verified successfully",
+            user: sanitizeUser(user),
+        });
+    } catch (error) {
+        console.error("Error during OTP verification:", error.message);
+        return res.status(500).json({ message: "Internal server error" });
+    }
+}
+
+export async function resendOtp(req, res) {
+    try {
+        const { email } = req.body;
+
+        if (!email) {
+            return res.status(400).json({ message: "Email is required" });
+        }
+
+        const user = await User.findOne({ email });
+
+        if (!user) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        if (user.isEmailVerified) {
+            return res.status(400).json({ message: "Email is already verified" });
+        }
+
+        const otp = generateOtp();
+        user.otpCode = otp;
+        user.otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
+        await user.save();
+
+        await sendOtpEmail({
+            email: user.email,
+            otp,
+            fullName: user.fullName,
+        });
+
+        return res.status(200).json({
+            success: true,
+            message: "A new verification code has been sent to your email.",
+        });
+    } catch (error) {
+        console.error("Error resending OTP:", error.message);
+        return res.status(500).json({ message: "Internal server error" });
+    }
+}
 
 export async function onboard(req, res) {
     try{
