@@ -3,12 +3,12 @@ import User from "../models/User.js";
 import jwt from "jsonwebtoken";
 import { generateOtp, sendOtpEmail } from "../utils/otp.js";
 
-function setAuthCookie(res, userId) {
+function setAuthCookie(req, res, userId) {
     const token = jwt.sign({ userId }, process.env.JWT_SECRET_KEY, { expiresIn: "7d" });
 
     res.cookie("jwt", token, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
+        secure: process.env.NODE_ENV === "production" ? req.secure : false,
         sameSite: "strict",
         maxAge: 7 * 24 * 60 * 60 * 1000,
     });
@@ -114,7 +114,7 @@ export async function login(req, res) {
             });
         }
 
-        setAuthCookie(res, user._id);
+        setAuthCookie(req, res, user._id);
 
          res.status(200).json({success: true, user: sanitizeUser(user)});
     }
@@ -145,7 +145,7 @@ export async function verifyOtp(req, res) {
         }
 
         if (user.isEmailVerified) {
-            setAuthCookie(res, user._id);
+            setAuthCookie(req, res, user._id);
             return res.status(200).json({
                 success: true,
                 message: "Email already verified",
@@ -184,7 +184,7 @@ export async function verifyOtp(req, res) {
             console.error("Error creating Stream user:", streamError.message);
         }
 
-        setAuthCookie(res, user._id);
+        setAuthCookie(req, res, user._id);
 
         return res.status(200).json({
             success: true,
