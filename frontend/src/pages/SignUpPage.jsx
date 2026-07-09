@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { ShipWheelIcon } from "lucide-react";
-import { Link } from "react-router";
+import { Link, useNavigate } from "react-router";
 
 import useSignUp from "../hooks/useSignUp";
 
 const SignUpPage = () => {
+  const navigate = useNavigate();
   const [signupData, setSignupData] = useState({
     fullName: "",
     email: "",
@@ -12,9 +13,21 @@ const SignUpPage = () => {
   });
   const { isPending, error, signupMutation } = useSignUp();
 
-  const handleSignup = (e) => {
+  const handleSignup = async (e) => {
     e.preventDefault();
-    signupMutation(signupData);
+    try {
+      const response = await signupMutation(signupData);
+
+      navigate("/verify-otp", {
+        state: {
+          email: signupData.email,
+          message: response?.message,
+        },
+        replace: true,
+      });
+    } catch (error) {
+      return error;
+    }
   };
 
   return (

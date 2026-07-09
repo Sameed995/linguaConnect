@@ -5,6 +5,16 @@ export const signup = async (signupData) => {
   return response.data;
 };
 
+export const verifyOtp = async (otpData) => {
+  const response = await axiosInstance.post("/auth/verify-otp", otpData);
+  return response.data;
+};
+
+export const resendOtp = async (otpData) => {
+  const response = await axiosInstance.post("/auth/resend-otp", otpData);
+  return response.data;
+};
+
 export const login = async (loginData) => {
   const response = await axiosInstance.post("/auth/login", loginData);
   return response.data;
