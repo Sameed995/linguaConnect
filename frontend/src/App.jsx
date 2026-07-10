@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes } from "react-router";
+import { Navigate, Route, Routes, useLocation } from "react-router";
 
 import HomePage from "./pages/HomePage.jsx";
 import SignUpPage from "./pages/SignUpPage.jsx";
@@ -21,11 +21,14 @@ import "stream-chat-react/dist/css/v2/index.css";
 const App = () => {
   const { isLoading, authUser } = useAuthUser();
   const { theme } = useThemeStore();
+  const location = useLocation();
+
+  const isPublicAuthRoute = ["/login", "/signup", "/verify-otp"].includes(location.pathname);
 
   const isAuthenticated = Boolean(authUser);
   const isOnboarded = authUser?.isOnboarded;
 
-  if (isLoading) return <PageLoader />;
+  if (isLoading && !isPublicAuthRoute) return <PageLoader />;
 
   return (
     <div className="h-screen" data-theme={theme}>
